@@ -106,37 +106,61 @@ stateDiagram-v2
 
 ```
 app/
-  api/
-    auth/        signup (OTP), login, send-otp
-    rides/       create/list, [id] status, requests, ratings, scheduled
-    drivers/     available, status (online/offline + location)
-    payments/    initiate (simulated)
-    analytics/   demand, forecast (ML)
-  auth/          login + signup (OTP) pages
-  dashboard/     passenger & driver dashboards
-  request-ride/  booking flow (map, fare, live wait-for-driver)
-  schedule-ride/ future-ride scheduling
-  my-rides/      history + star ratings
-  analytics/     demand charts      forecast/  ML predictions
-  page.tsx       landing page       layout.tsx root layout + toasts
+├── api/                              # REST API (route handlers)
+│   ├── auth/
+│   │   ├── send-otp/route.ts         # email a 6-digit OTP
+│   │   ├── signup/route.ts           # create account (verifies OTP)
+│   │   └── login/route.ts            # authenticate, issue JWT
+│   ├── rides/
+│   │   ├── route.ts                  # GET my rides · POST create (fare calc)
+│   │   ├── [id]/route.ts             # GET detail · PATCH status (atomic accept)
+│   │   ├── [id]/ratings/route.ts     # POST rate a completed ride
+│   │   ├── requests/route.ts         # GET open requests (drivers)
+│   │   └── scheduled/route.ts        # GET/POST scheduled rides
+│   ├── drivers/
+│   │   ├── status/route.ts           # GET/PATCH online·offline + location
+│   │   └── available/route.ts        # GET nearby online drivers (Haversine)
+│   ├── payments/initiate/route.ts    # POST simulated payment
+│   └── analytics/
+│       ├── demand/route.ts           # GET demand analytics
+│       └── forecast/route.ts         # GET 7-day ML forecast
+├── auth/
+│   ├── login/page.tsx
+│   └── signup/page.tsx               # 2-step signup with OTP
+├── dashboard/
+│   ├── passenger/page.tsx            # live active rides + quick actions
+│   └── driver/page.tsx               # live requests, accept/start/complete
+├── request-ride/page.tsx             # booking: map, fare, live wait-for-driver
+├── schedule-ride/page.tsx            # future-ride scheduling
+├── my-rides/page.tsx                 # ride history + star ratings
+├── analytics/page.tsx                # demand charts
+├── forecast/page.tsx                 # ML demand predictions
+├── page.tsx                          # landing page
+├── layout.tsx                        # root layout + toast container
+└── globals.css
+
 components/
-  map/           RideMap (Leaflet)
-  payments/      PaymentModal (UPI/QR/Card/Cash)
-  common/        Cards, Toast, LoadingSpinner
+├── map/RideMap.tsx                   # Leaflet map + markers
+├── payments/PaymentModal.tsx         # UPI / QR / Card / Cash
+└── common/                           # Cards, Toast, LoadingSpinner
+
 lib/
-  auth.ts        JWT + bcrypt helpers
-  prisma.ts      Prisma singleton client
-  socket.ts      server-side Socket.IO emit helpers
-  useSocket.ts   client-side Socket.IO hook
-  email.ts       OTP email (Nodemailer, console fallback)
-  locations.ts   campus locations + Haversine + fare model
+├── auth.ts                           # JWT sign/verify + bcrypt
+├── prisma.ts                         # Prisma singleton client
+├── socket.ts                         # server-side Socket.IO emit helpers
+├── useSocket.ts                      # client-side Socket.IO hook
+├── email.ts                          # OTP email (Nodemailer + console fallback)
+└── locations.ts                      # campus locations + Haversine + fare model
+
 prisma/
-  schema.prisma  7 models + enums + indexes
-  seed.ts        demo users + historical rides (analytics data)
-  migrations/    committed DB migrations
-server.js        custom Next.js + Socket.IO server
-Dockerfile       container build       render.yaml  Render blueprint
-schema.dbml      ER diagram source (dbdiagram.io)
+├── schema.prisma                     # 7 models, enums, indexes
+├── seed.ts                           # demo users + historical rides
+└── migrations/                       # committed DB migrations
+
+server.js                             # custom Next.js + Socket.IO server
+Dockerfile · render.yaml              # container build + deploy config
+schema.dbml                           # ER diagram source (dbdiagram.io)
+next.config.js · tailwind.config.ts · tsconfig.json
 ```
 
 **Database:** 7 Prisma models — `User`, `PassengerProfile`, `DriverProfile`,
