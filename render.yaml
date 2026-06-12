@@ -1,0 +1,23 @@
+# Render Blueprint — deploys the Docker image as a free web service.
+# In the Render dashboard: New + → Blueprint → connect this repo.
+# Then set the secret env vars (marked sync:false) in the dashboard.
+services:
+  - type: web
+    name: campus-ride-platform
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false

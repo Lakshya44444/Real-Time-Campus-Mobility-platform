@@ -1,0 +1,132 @@
+// =====================================================================
+// Campus Ride Platform — Database Schema (DBML)
+// Generate the ER diagram: copy this file into https://dbdiagram.io/d
+// Mirrors prisma/schema.prisma (PostgreSQL / Supabase).
+// =====================================================================
+
+Enum user_type {
+  PASSENGER
+  DRIVER
+}
+
+Enum ride_status {
+  REQUESTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+Table User {
+  id           varchar   [pk, note: 'cuid']
+  email        varchar   [unique, not null]
+  password     varchar   [not null, note: 'bcrypt hash']
+  firstName    varchar   [not null]
+  lastName     varchar   [not null]
+  phone        varchar
+  profileImage varchar
+  userType     user_type [not null, default: 'PASSENGER']
+  createdAt    timestamp [not null, default: `now()`]
+  updatedAt    timestamp [not null]
+}
+
+Table PassengerProfile {
+  id        varchar   [pk]
+  userId    varchar   [unique, not null]
+  createdAt timestamp [not null, default: `now()`]
+  updatedAt timestamp [not null]
+}
+
+Table DriverProfile {
+  id               varchar   [pk]
+  userId           varchar   [unique, not null]
+  licenseNumber    varchar   [unique, not null]
+  licenseExpiry    timestamp [not null]
+  vehicleType      varchar   [not null]
+  vehicleNumber    varchar   [unique, not null]
+  vehicleColor     varchar
+  seatingCapacity  int       [not null, default: 4]
+  isVerified       boolean   [not null, default: false]
+  isOnline         boolean   [not null, default: false]
+  currentLatitude  float
+  currentLongitude float
+  totalRides       int       [not null, default: 0]
+  averageRating    float     [not null, default: 0]
+  totalEarnings    float     [not null, default: 0]
+  createdAt        timestamp [not null, default: `now()`]
+  updatedAt        timestamp [not null]
+}
+
+Table SavedLocation {
+  id                 varchar   [pk]
+  passengerProfileId varchar   [not null]
+  label              varchar   [not null]
+  latitude           float     [not null]
+  longitude          float     [not null]
+  address            varchar   [not null]
+  createdAt          timestamp [not null, default: `now()`]
+}
+
+Table Ride {
+  id                 varchar     [pk]
+  passengerId        varchar     [not null]
+  driverId           varchar
+  status             ride_status [not null, default: 'REQUESTED']
+  pickupLatitude     float       [not null]
+  pickupLongitude    float       [not null]
+  pickupAddress      varchar     [not null]
+  dropLatitude       float       [not null]
+  dropLongitude      float       [not null]
+  dropAddress        varchar     [not null]
+  estimatedFare      float
+  actualFare         float
+  scheduledTime      timestamp
+  startTime          timestamp
+  endTime            timestamp
+  cancellationReason varchar
+  createdAt          timestamp   [not null, default: `now()`]
+  updatedAt          timestamp   [not null]
+
+  Indexes {
+    status     [note: 'filter open requests / lifecycle queries']
+    passengerId
+    driverId
+    createdAt  [note: 'analytics time-window scans']
+  }
+}
+
+Table Rating {
+  id        varchar   [pk]
+  rideId    varchar   [unique, not null]
+  userId    varchar   [not null, note: 'the rated driver']
+  rating    int       [not null, note: '1..5']
+  feedback  varchar
+  createdAt timestamp [not null, default: `now()`]
+}
+
+Table EmailVerification {
+  id        varchar   [pk]
+  email     varchar   [unique, not null]
+  otp       varchar   [not null, note: '6-digit code']
+  expiresAt timestamp [not null]
+  verified  boolean   [not null, default: false]
+  createdAt timestamp [not null, default: `now()`]
+}
+
+// ---------------------- Relationships --------------------------------
+// 1:1 — a user has at most one profile of each kind (cascade on delete)
+Ref: PassengerProfile.userId - User.id [delete: cascade]
+Ref: DriverProfile.userId   - User.id [delete: cascade]
+
+// 1:N — a passenger profile can store many saved locations
+Ref: SavedLocation.passengerProfileId > PassengerProfile.id [delete: cascade]
+
+// 1:N — a user requests many rides; a driver is assigned many rides
+Ref: Ride.passengerId > User.id
+Ref: Ride.driverId    > User.id
+
+// 1:1 — each completed ride has at most one rating (cascade on delete)
+Ref: Rating.rideId - Ride.id [delete: cascade]
+
+// 1:N — a (driver) user accumulates many ratings
+Ref: Rating.userId > User.id

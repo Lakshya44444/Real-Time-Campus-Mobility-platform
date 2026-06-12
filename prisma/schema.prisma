@@ -1,0 +1,136 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  password        String
+  firstName       String
+  lastName        String
+  phone           String?
+  profileImage    String?
+  userType        UserType  @default(PASSENGER)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  passengerProfile  PassengerProfile?
+  driverProfile     DriverProfile?
+  ratings           Rating[]
+  rideRequests      Ride[]      @relation("PassengerRides")
+  assignedRides     Ride[]      @relation("DriverRides")
+}
+
+enum UserType {
+  PASSENGER
+  DRIVER
+}
+
+model PassengerProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  savedLocations  SavedLocation[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model DriverProfile {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber     String    @unique
+  licenseExpiry     DateTime
+  vehicleType       String
+  vehicleNumber     String    @unique
+  vehicleColor      String?
+  seatingCapacity   Int       @default(4)
+  isVerified        Boolean   @default(false)
+  isOnline          Boolean   @default(false)
+  currentLatitude   Float?
+  currentLongitude  Float?
+  totalRides        Int       @default(0)
+  averageRating     Float     @default(0)
+  totalEarnings     Float     @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model SavedLocation {
+  id                String    @id @default(cuid())
+  passengerProfileId String
+  passengerProfile  PassengerProfile @relation(fields: [passengerProfileId], references: [id], onDelete: Cascade)
+  label             String
+  latitude          Float
+  longitude         Float
+  address           String
+  createdAt         DateTime  @default(now())
+}
+
+model Ride {
+  id                String      @id @default(cuid())
+  passengerId       String
+  passenger         User        @relation("PassengerRides", fields: [passengerId], references: [id])
+  driverId          String?
+  driver            User?       @relation("DriverRides", fields: [driverId], references: [id])
+  status            RideStatus  @default(REQUESTED)
+  pickupLatitude    Float
+  pickupLongitude   Float
+  pickupAddress     String
+  dropLatitude      Float
+  dropLongitude     Float
+  dropAddress       String
+  estimatedFare     Float?
+  actualFare        Float?
+  scheduledTime     DateTime?
+  startTime         DateTime?
+  endTime           DateTime?
+  cancellationReason String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  rating            Rating?
+
+  @@index([status])
+  @@index([passengerId])
+  @@index([driverId])
+  @@index([createdAt])
+}
+
+enum RideStatus {
+  REQUESTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Rating {
+  id                String    @id @default(cuid())
+  rideId            String    @unique
+  ride              Ride      @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+  rating            Int
+  feedback          String?
+  createdAt         DateTime  @default(now())
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
