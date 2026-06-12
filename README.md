@@ -1,37 +1,83 @@
 # Campus Ride Platform
 
-A real-time campus mobility platform that connects passengers and drivers
+A **real-time campus mobility platform** connecting passengers and drivers
 (modelled on IIT Roorkee's e-rickshaw last-mile transport). Passengers request
-rides, drivers accept and manage them, and every update is delivered live over
-WebSockets.
+rides, drivers accept and manage them, and every update is delivered **live** over
+WebSockets — no refresh needed.
+
+### Live Demo
+**https://real-time-campus-mobility-platform-production.up.railway.app**
+
+Demo accounts (password `password123`):
+| Role | Email |
+|---|---|
+| Passenger | `passenger@example.com` |
+| Driver | `driver@example.com` |
+
+> Tip: to see real-time in action, open two windows — one normal (passenger) and
+> one Incognito (driver). Take the driver online, request a ride as the passenger,
+> and watch it appear and update live on both sides.
+
+---
+
+## Project Overview
+
+The platform solves fragmented, informal campus transport with a single
+coordinated system: secure auth, driver availability, a ride request → assignment
+→ lifecycle workflow, live updates, dashboards, ratings, and analytics.
+
+A **custom Node server** (`server.js`) hosts Next.js (UI + REST API) **and**
+Socket.IO in one process, so API routes and the WebSocket layer share a runtime.
+Every state change is **persisted first, then broadcast** — clients never receive
+a non-durable update.
+
+```mermaid
+flowchart LR
+  subgraph Client["Browser — Passenger / Driver"]
+    UI["React UI (Next.js)"]
+    SC["Socket.IO client"]
+  end
+  subgraph Server["server.js · port 8080"]
+    API["REST API (/app/api/*)"]
+    IO["Socket.IO (/rides, /drivers)"]
+  end
+  DB[("PostgreSQL / Supabase")]
+  MAIL["SMTP (Gmail) — OTP"]
+
+  UI -->|"fetch + JWT"| API
+  SC <-->|"WebSocket"| IO
+  API -->|"Prisma ORM"| DB
+  API -->|"emit after commit"| IO
+  API -->|"send OTP"| MAIL
+  IO -->|"live updates"| SC
+```
 
 ---
 
 ## Technology Stack
 
-- **Next.js 15** (App Router) + **TypeScript** (strict)
-- **Socket.IO** — real-time updates (`/rides`, `/drivers` namespaces)
-- **PostgreSQL** (Supabase) + **Prisma ORM**
-- **JWT** auth + **bcryptjs** password hashing
-- **Zod** request validation
-- **Nodemailer** — email OTP verification
-- **Tailwind CSS**, **Leaflet/OpenStreetMap** (maps), **Recharts** (charts)
-
-A custom Node server (`server.js`) hosts Next.js and Socket.IO in one process so
-API routes and the WebSocket layer share a single runtime.
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 (App Router) + TypeScript (strict) |
+| Real-time | Socket.IO (`/rides`, `/drivers` namespaces) |
+| Database | PostgreSQL (Supabase) + Prisma ORM |
+| Auth | JWT + bcryptjs, email OTP (Nodemailer) |
+| Validation | Zod |
+| UI | Tailwind CSS, Leaflet/OpenStreetMap, Recharts |
+| Deploy | Docker on Railway / Render / Koyeb |
 
 ---
 
-## Features
+## Feature List
 
 ### Mandatory
 - [x] JWT authentication with **email OTP verification**
 - [x] Passenger & driver registration + profiles (driver vehicle info)
 - [x] Driver availability (online/offline + live location)
-- [x] Ride request workflow (pickup/drop, distance-based fare)
+- [x] Ride request workflow (pickup/drop, **distance-based fare**)
 - [x] **Atomic** ride assignment — a ride goes to exactly one driver
-- [x] Real-time updates over Socket.IO (live requests, acceptance, status)
-- [x] Ride lifecycle: REQUESTED → ACCEPTED → IN_PROGRESS → COMPLETED / CANCELLED
+- [x] Real-time updates (live requests, acceptance, status)
+- [x] Ride lifecycle (state machine below)
 - [x] Driver dashboard (total rides, earnings, rating, history)
 - [x] Ratings & feedback (updates driver average)
 
@@ -42,151 +88,148 @@ API routes and the WebSocket layer share a single runtime.
 - [x] Demand analytics (peak hours, popular locations)
 - [x] Demand forecasting (Moving Average + Exponential Smoothing)
 
+```mermaid
+stateDiagram-v2
+  [*] --> REQUESTED : passenger requests
+  REQUESTED --> ACCEPTED : driver accepts (atomic)
+  ACCEPTED --> IN_PROGRESS : start ride
+  IN_PROGRESS --> COMPLETED : complete
+  REQUESTED --> CANCELLED : cancel
+  ACCEPTED --> CANCELLED : cancel
+  COMPLETED --> [*]
+  CANCELLED --> [*]
+```
+
 ---
 
-## Setup
+## Project Structure — where everything lives
+
+```
+app/
+  api/
+    auth/        signup (OTP), login, send-otp
+    rides/       create/list, [id] status, requests, ratings, scheduled
+    drivers/     available, status (online/offline + location)
+    payments/    initiate (simulated)
+    analytics/   demand, forecast (ML)
+  auth/          login + signup (OTP) pages
+  dashboard/     passenger & driver dashboards
+  request-ride/  booking flow (map, fare, live wait-for-driver)
+  schedule-ride/ future-ride scheduling
+  my-rides/      history + star ratings
+  analytics/     demand charts      forecast/  ML predictions
+  page.tsx       landing page       layout.tsx root layout + toasts
+components/
+  map/           RideMap (Leaflet)
+  payments/      PaymentModal (UPI/QR/Card/Cash)
+  common/        Cards, Toast, LoadingSpinner
+lib/
+  auth.ts        JWT + bcrypt helpers
+  prisma.ts      Prisma singleton client
+  socket.ts      server-side Socket.IO emit helpers
+  useSocket.ts   client-side Socket.IO hook
+  email.ts       OTP email (Nodemailer, console fallback)
+  locations.ts   campus locations + Haversine + fare model
+prisma/
+  schema.prisma  7 models + enums + indexes
+  seed.ts        demo users + historical rides (analytics data)
+  migrations/    committed DB migrations
+server.js        custom Next.js + Socket.IO server
+Dockerfile       container build       render.yaml  Render blueprint
+schema.dbml      ER diagram source (dbdiagram.io)
+```
+
+**Database:** 7 Prisma models — `User`, `PassengerProfile`, `DriverProfile`,
+`SavedLocation`, `Ride`, `Rating`, `EmailVerification`. Import `schema.dbml` into
+[dbdiagram.io](https://dbdiagram.io) for the full ERD.
+
+---
+
+## Setup Instructions
 
 ### Prerequisites
 - Node.js 18+
 - A PostgreSQL database (a free **Supabase** project works)
 
-### Install & configure
+### 1. Install
 ```bash
 npm install
 ```
 
-Create `.env.local` (app) and `.env` (Prisma CLI) with:
+### 2. Environment variables
+Create `.env.local` (used by the app) and `.env` (used by the Prisma CLI):
 ```env
 DATABASE_URL="postgresql://...pooler.supabase.com:6543/postgres?pgbouncer=true"
 DIRECT_URL="postgresql://...pooler.supabase.com:5432/postgres"
 JWT_SECRET="your-secret-key"
 # Optional — real OTP email (Gmail App Password). Without these, the OTP prints
-# to the server console (dev mode).
+# to the server console in dev.
 EMAIL_USER="you@gmail.com"
 EMAIL_PASS="your-app-password"
 ```
 
-### Database
+### 3. Database
 ```bash
-npx prisma migrate dev      # create tables
+npx prisma migrate dev      # create all tables
 npx prisma db seed          # demo users + historical data for analytics
 ```
 
-Demo accounts (password `password123`):
-- Passenger — `passenger@example.com`
-- Driver — `driver@example.com`
-
 ---
 
-## Running
+## Running the Application
 
+### Development
 ```bash
-npm run dev          # http://localhost:8080
+npm run dev
 ```
+Open **http://localhost:8080**.
 
-Production build:
+### Production
 ```bash
 npm run build
 npm start
 ```
 
-> The app runs on **port 8080**. To test the real-time flow, open two windows
-> (one passenger, one driver) — e.g. a normal window + an Incognito window.
+> The app runs on **port 8080** (not 3000). On startup you should see
+> `Socket.IO ready on namespaces /rides and /drivers` — that confirms real-time
+> is active.
 
 ---
 
-## API Reference
+## API Reference (summary)
 
-All protected routes need `Authorization: Bearer <JWT>`. Bodies validated with Zod.
+All protected routes require `Authorization: Bearer <JWT>`; bodies validated with Zod.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| POST | `/api/auth/send-otp` | Email a 6-digit OTP |
-| POST | `/api/auth/signup` | Create account (requires OTP) |
-| POST | `/api/auth/login` | Login, returns JWT |
-| GET / POST | `/api/rides` | List my rides / create request (computes fare) |
-| GET | `/api/rides/requests` | Open requests (drivers) |
-| GET / PATCH | `/api/rides/:id` | Ride detail / status change |
-| POST | `/api/rides/:id/ratings` | Rate a completed ride |
-| GET / POST | `/api/rides/scheduled` | List / create scheduled rides |
-| GET | `/api/drivers/available` | Online drivers near a point |
-| GET / PATCH | `/api/drivers/status` | Availability + live location |
-| POST | `/api/payments/initiate` | Simulated payment (persists fare) |
-| GET | `/api/analytics/demand` | Demand analytics |
-| GET | `/api/analytics/forecast` | 7-day demand forecast |
+| POST | `/api/auth/send-otp` · `/signup` · `/login` | OTP, register, login |
+| GET/POST | `/api/rides` | list / create ride (computes fare) |
+| GET | `/api/rides/requests` | open requests (drivers) |
+| GET/PATCH | `/api/rides/:id` | detail / status change |
+| POST | `/api/rides/:id/ratings` | rate completed ride |
+| GET/POST | `/api/rides/scheduled` | scheduled rides |
+| GET/PATCH | `/api/drivers/status` · `/available` | availability / nearby drivers |
+| POST | `/api/payments/initiate` | simulated payment |
+| GET | `/api/analytics/demand` · `/forecast` | analytics + ML forecast |
 
-### Socket.IO events (`/rides`)
-| Event | Direction | Meaning |
-|---|---|---|
-| `register` | client → server | Join personal room `user-<id>` |
-| `join-ride` | client → server | Follow ride room `ride-<id>` |
-| `ride:requested` | server → drivers | New open request |
-| `ride:accepted` | server → passenger | A driver claimed the ride |
-| `ride:status_updated` | server → ride room | Lifecycle change |
-| `driver:availability_changed` | server (`/drivers`) | Online pool changed |
-
----
-
-## Database Schema
-
-7 tables via Prisma (`prisma/schema.prisma`): **User**, **PassengerProfile**,
-**DriverProfile**, **SavedLocation**, **Ride**, **Rating**, **EmailVerification**.
-An importable ER diagram source is in `schema.dbml` (paste into dbdiagram.io).
-
----
-
-## Project Structure
-
-```
-app/
-  api/            REST API routes (auth, rides, drivers, payments, analytics)
-  auth/           login + signup (OTP) pages
-  dashboard/      passenger & driver dashboards
-  request-ride/   ride booking flow
-  schedule-ride/  scheduling
-  my-rides/       history + ratings
-  analytics/, forecast/
-components/        map, payment, common UI
-lib/              auth, prisma, socket (server + client), email, locations
-prisma/           schema + migrations + seed
-server.js         custom Next.js + Socket.IO server
-```
+**Socket.IO events (`/rides`):** `ride:requested` (→ drivers), `ride:accepted`
+(→ passenger), `ride:status_updated` (→ ride room), `driver:availability_changed`.
 
 ---
 
 ## Deployment
 
-This app needs a host that runs a **persistent server with WebSockets** — so
-**not** Vercel (serverless). The repo includes a `Dockerfile`; deploy on any of:
-
-- **Render** (free Docker web service) — uses `render.yaml`
-- **Railway** — auto-detects the Dockerfile (free trial credit)
-- **Koyeb** — permanently free tier, no card
-
-Steps (any platform): push to GitHub → create a Docker web service from the repo
-→ set env vars `JWT_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `EMAIL_USER`,
-`EMAIL_PASS` → deploy. The database stays on Supabase.
+Needs a host that runs a **persistent server with WebSockets** — **not** Vercel
+(serverless). The repo ships a `Dockerfile`; deploy on **Railway**, **Render**, or
+**Koyeb**: push to GitHub → create a Docker web service → set env vars
+(`JWT_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `EMAIL_USER`, `EMAIL_PASS`, `PORT=8080`)
+→ deploy. The database stays on Supabase.
 
 ---
 
-## Verifying it works
-
-```bash
-npx tsc --noEmit     # 0 type errors
-npm run build        # production build succeeds
-```
-
-Manual: log in → driver goes online → passenger requests → request appears live on
-the driver → accept → passenger sees it live → start → complete → rate the ride →
-check the driver dashboard and analytics update.
-
----
-
-## Design Notes
-
-- **Persist first, broadcast second:** every change is written to the DB, then a
-  Socket.IO event is emitted — clients never see a non-durable update.
-- **Atomic accept:** a conditional `updateMany` guarantees one driver per ride.
+## Design Highlights
+- **Persist first, broadcast second** — durable real-time updates.
+- **Atomic accept** via conditional `updateMany` — one driver per ride.
 - **Single-query relation loads** (`relationLoadStrategy: "join"`) cut latency.
-- **Optimistic UI** keeps driver actions feeling instant against a remote DB.
+- **Optimistic UI** keeps actions instant against a remote DB.
 - **Deterministic fare** (`₹20 + ₹12/km`) shared by client preview and server.
